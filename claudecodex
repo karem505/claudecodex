@@ -1,20 +1,30 @@
 #!/usr/bin/env bash
-# claudecodex — launch Claude Code with GPT-5.x via a local Codex-auth proxy.
+# claudecodex — launch Claude Code with GPT-5.6 via a local Codex-auth proxy.
 #
 # Plain `claude` is untouched: every override below is exported only inside
 # this process, then we exec claude. Nothing leaks into your shell or your
 # normal Anthropic-authenticated sessions.
 #
 # Proxy: https://github.com/raine/claude-code-proxy (Anthropic-compatible
-# endpoint on :18765, backed by ChatGPT Plus/Pro Codex auth).
+# endpoint on :18765, backed by ChatGPT Plus/Pro Codex auth). Needs a proxy
+# build that knows the GPT-5.6 models (v0.1.8+).
 #
-# Model switching:
-#   claudecodex           → gpt-5.5   (default / "big")
-#   claudecodex --mini    → gpt-5.4-mini   (fast/cheap; alias --54)
-#   claudecodex --big     → gpt-5.5        (explicit; alias --55)
-#   In-session: /model → pick gpt-5.5 or gpt-5.4-mini, then press 's'
+# Model switching (GPT-5.6 family: sol = best coding, terra = mid, luna = budget):
+#   claudecodex           → gpt-5.6-sol    (default / "big")
+#   claudecodex --mini    → gpt-5.6-luna   (fast/cheap; alias --luna)
+#   claudecodex --big     → gpt-5.6-sol    (explicit; alias --sol)
+#   claudecodex --terra   → gpt-5.6-terra  (mid tier)
+#   In-session: /model → pick gpt-5.6-sol or gpt-5.6-luna, then press 's'
 #               (session-only) so plain `claude`'s default stays untouched.
-#   Both models are always listed in the /model picker.
+#   The big + small models are always listed in the /model picker.
+#
+# Thinking level: gpt-5.6-sol launches at MAX effort by default — the highest
+# level reachable through claude-code-proxy today. (Sol's "ultra" parallel-
+# subagent mode exists in the official Codex app but is not plumbed through the
+# proxy yet; the proxy's ceiling is "max". Setting CLAUDECODEX_EFFORT=ultra is
+# auto-downgraded to max until a proxy build supports it.) luna/terra keep
+# Claude Code's own effort. Override any launch with CLAUDECODEX_EFFORT or
+# --effort; change it live with /effort.
 #
 # One-time setup:
 #   curl -fsSL https://raw.githubusercontent.com/raine/claude-code-proxy/main/scripts/install.sh | bash
@@ -26,9 +36,10 @@
 #
 # Tunables (set in your environment if you want non-defaults):
 #   CLAUDECODEX_PORT               proxy port           (default: 18765)
-#   CLAUDECODEX_MODEL              "big" model          (default: gpt-5.5)
-#   CLAUDECODEX_SMALL_MODEL        fast/cheap model     (default: gpt-5.4-mini)
-#   CLAUDECODEX_CONTEXT            context window        (default: 400000)
+#   CLAUDECODEX_MODEL              "big" model          (default: gpt-5.6-sol)
+#   CLAUDECODEX_SMALL_MODEL        fast/cheap model     (default: gpt-5.6-luna)
+#   CLAUDECODEX_EFFORT             thinking level        (default: max on sol)
+#   CLAUDECODEX_CONTEXT            context window        (default: 272000)
 #   CLAUDECODEX_SKIP_PERMISSIONS   1=bypass, 0=normal    (default: 1)
 #   CLAUDECODEX_PROXY_BIN          proxy binary          (default: claude-code-proxy)
 #   CLAUDECODEX_AGENT_VIEW=1       show jobs dashboard on start
@@ -36,8 +47,9 @@ set -euo pipefail
 
 PROXY_PORT="${CLAUDECODEX_PORT:-18765}"
 PROXY_BIN="${CLAUDECODEX_PROXY_BIN:-claude-code-proxy}"
-BIG_MODEL="${CLAUDECODEX_MODEL:-gpt-5.5}"
-SMALL_MODEL="${CLAUDECODEX_SMALL_MODEL:-gpt-5.4-mini}"
+BIG_MODEL="${CLAUDECODEX_MODEL:-gpt-5.6-sol}"
+SMALL_MODEL="${CLAUDECODEX_SMALL_MODEL:-gpt-5.6-luna}"
+MID_MODEL="gpt-5.6-terra"
 PROXY_LOG="${XDG_STATE_HOME:-$HOME/.local/state}/claudecodex/proxy.log"
 
 # Pick the active model from sugar flags, then strip them so the rest passes
@@ -48,9 +60,10 @@ ACTIVE_MODEL=""
 ARGS=()
 for arg in "$@"; do
   case "$arg" in
-    --mini|--54|--gpt-5.4-mini) ACTIVE_MODEL="$SMALL_MODEL" ;;
-    --big|--55|--gpt-5.5)       ACTIVE_MODEL="$BIG_MODEL" ;;
-    *)                          ARGS+=("$arg") ;;
+    --mini|--luna|--gpt-5.6-luna) ACTIVE_MODEL="$SMALL_MODEL" ;;
+    --big|--sol|--gpt-5.6-sol)    ACTIVE_MODEL="$BIG_MODEL" ;;
+    --terra|--gpt-5.6-terra)      ACTIVE_MODEL="$MID_MODEL" ;;
+    *)                            ARGS+=("$arg") ;;
   esac
 done
 
@@ -95,14 +108,12 @@ if [ "${CLAUDECODEX_AGENT_VIEW:-0}" != "1" ]; then
   export CLAUDE_CODE_DISABLE_AGENT_VIEW=1
 fi
 
-# Context window. GPT-5.5's raw API window is 1M, but through Codex auth (this
-# proxy's path) it is hard-capped at 400K — advertising more triggers "exceeds
-# the context window" errors from Codex. Claude Code otherwise assumes 200K for
-# unknown model names, skewing the gauge; MAX_CONTEXT_TOKENS sets the real window
-# (applies to non-claude-* models only). Note: >272K input bills/quotas at ~2x,
-# so drop CLAUDECODEX_CONTEXT to 272000 if you want to stay under that knee.
-export CLAUDE_CODE_MAX_CONTEXT_TOKENS="${CLAUDECODEX_CONTEXT:-400000}"
-export CLAUDE_CODE_AUTO_COMPACT_WINDOW="${CLAUDECODEX_CONTEXT:-400000}"
+# Context window. Through Codex auth (this proxy's path) GPT-5.6's ChatGPT
+# subscription context limit is 272K tokens. Claude Code otherwise assumes 200K
+# for unknown model names, which skews the context gauge and compacts too early;
+# MAX_CONTEXT_TOKENS sets the real window (applies to non-claude-* models only).
+export CLAUDE_CODE_MAX_CONTEXT_TOKENS="${CLAUDECODEX_CONTEXT:-272000}"
+export CLAUDE_CODE_AUTO_COMPACT_WINDOW="${CLAUDECODEX_CONTEXT:-272000}"
 export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
 export CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK=1
 
@@ -112,13 +123,32 @@ export CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK=1
 LAUNCH_FLAGS=()
 [ -n "$ACTIVE_MODEL" ] && LAUNCH_FLAGS+=(--model "$ACTIVE_MODEL")
 
+# Default thinking level: the "big" model (gpt-5.6-sol) launches at max effort —
+# the highest reachable through the proxy. Other models keep Claude Code's own
+# effort. CLAUDECODEX_EFFORT overrides. --effort is session-scoped, so plain
+# `claude`'s effort setting is never touched.
+RESOLVED_MODEL="${ACTIVE_MODEL:-$BIG_MODEL}"
+DEFAULT_EFFORT=""
+[ "$RESOLVED_MODEL" = "$BIG_MODEL" ] && DEFAULT_EFFORT="max"
+EFFORT="${CLAUDECODEX_EFFORT:-$DEFAULT_EFFORT}"
+# 'ultra' (Sol's parallel-subagent mode) isn't exposed by claude-code-proxy yet
+# (its ceiling is max), and Claude Code has no ultra effort — passing it clamps
+# to xhigh. Map it to max, the real ceiling, so the intent still gets the most.
+if [ "$EFFORT" = "ultra" ]; then
+  echo "claudecodex: 'ultra' effort isn't reachable through the proxy yet — using 'max'." >&2
+  EFFORT="max"
+fi
+
 user_set_perms=0
+user_set_effort=0
 for arg in "${ARGS[@]}"; do
   case "$arg" in
     --dangerously-skip-permissions|--allow-dangerously-skip-permissions|--permission-mode|--permission-mode=*)
       user_set_perms=1 ;;
+    --effort|--effort=*) user_set_effort=1 ;;
   esac
 done
+[ -n "$EFFORT" ] && [ "$user_set_effort" = "0" ] && LAUNCH_FLAGS+=(--effort "$EFFORT")
 if [ "${CLAUDECODEX_SKIP_PERMISSIONS:-1}" = "1" ] && [ "$user_set_perms" = "0" ]; then
   LAUNCH_FLAGS+=(--dangerously-skip-permissions)
 fi

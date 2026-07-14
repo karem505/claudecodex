@@ -70,5 +70,6 @@ fi
 
 echo ""
 green "Done. Start it with:  claudecodex"
-echo "     claudecodex --mini   # use gpt-5.4-mini for this session"
+echo "     claudecodex          # gpt-5.6-sol at max effort"
+echo "     claudecodex --mini   # gpt-5.6-luna for this session"
 echo "     See:  https://github.com/${REPO}"
