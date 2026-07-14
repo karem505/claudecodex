@@ -39,7 +39,7 @@
 #   CLAUDECODEX_MODEL              "big" model          (default: gpt-5.6-sol)
 #   CLAUDECODEX_SMALL_MODEL        fast/cheap model     (default: gpt-5.6-luna)
 #   CLAUDECODEX_EFFORT             thinking level        (default: max on sol)
-#   CLAUDECODEX_CONTEXT            context window        (default: 272000)
+#   CLAUDECODEX_CONTEXT            context window        (default: 372000)
 #   CLAUDECODEX_SKIP_PERMISSIONS   1=bypass, 0=normal    (default: 1)
 #   CLAUDECODEX_PROXY_BIN          proxy binary          (default: claude-code-proxy)
 #   CLAUDECODEX_AGENT_VIEW=1       show jobs dashboard on start
@@ -108,12 +108,15 @@ if [ "${CLAUDECODEX_AGENT_VIEW:-0}" != "1" ]; then
   export CLAUDE_CODE_DISABLE_AGENT_VIEW=1
 fi
 
-# Context window. Through Codex auth (this proxy's path) GPT-5.6's ChatGPT
-# subscription context limit is 272K tokens. Claude Code otherwise assumes 200K
-# for unknown model names, which skews the context gauge and compacts too early;
+# Context window. gpt-5.6-sol's Codex window is 372K tokens (~353K effective
+# after the 95% multiplier). The 272K figure is only the pricing knee — input
+# past 272K bills at ~2x, it is NOT the hard cap. Claude Code otherwise assumes
+# 200K for unknown model names, which skews the gauge and compacts too early;
 # MAX_CONTEXT_TOKENS sets the real window (applies to non-claude-* models only).
-export CLAUDE_CODE_MAX_CONTEXT_TOKENS="${CLAUDECODEX_CONTEXT:-272000}"
-export CLAUDE_CODE_AUTO_COMPACT_WINDOW="${CLAUDECODEX_CONTEXT:-272000}"
+# Claude Code's built-in autocompact buffer keeps a margin below this, so it
+# won't overflow past the effective window into "exceeds context window" errors.
+export CLAUDE_CODE_MAX_CONTEXT_TOKENS="${CLAUDECODEX_CONTEXT:-372000}"
+export CLAUDE_CODE_AUTO_COMPACT_WINDOW="${CLAUDECODEX_CONTEXT:-372000}"
 export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
 export CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK=1
 

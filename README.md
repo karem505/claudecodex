@@ -110,7 +110,7 @@ All optional — set as environment variables:
 | `CLAUDECODEX_MODEL` | `gpt-5.6-sol` | The "big" model |
 | `CLAUDECODEX_SMALL_MODEL` | `gpt-5.6-luna` | The fast/cheap model |
 | `CLAUDECODEX_EFFORT` | `max` (on sol) | Thinking level: `low`/`medium`/`high`/`xhigh`/`max` |
-| `CLAUDECODEX_CONTEXT` | `272000` | Context window (see note) |
+| `CLAUDECODEX_CONTEXT` | `372000` | Context window (see note) |
 | `CLAUDECODEX_SKIP_PERMISSIONS` | `1` | `1` = bypass permissions, `0` = normal prompts |
 | `CLAUDECODEX_PORT` | `18765` | Proxy port |
 | `CLAUDECODEX_AGENT_VIEW` | `0` | `1` = show the background-jobs dashboard on start |
@@ -124,11 +124,13 @@ CLAUDECODEX_EFFORT=high CLAUDECODEX_MODEL=gpt-5.6-terra claudecodex
 
 ### Context window note
 
-Through **Codex auth** (this proxy's path) GPT-5.6's ChatGPT subscription context
-limit is **272K tokens**. Claude Code otherwise assumes 200K for unknown model
-names, which makes the context gauge wrong and compacts too early; `claudecodex`
-sets it to the real 272K. Bump `CLAUDECODEX_CONTEXT` if OpenAI raises the
-subscription limit.
+`gpt-5.6-sol`'s **Codex context window is 372K tokens** (~353K effective after
+the 95% multiplier). The API model is 1.05M, but the Codex subscription path caps
+at 372K — advertising more triggers *"exceeds the context window"* errors. The
+**272K** figure often quoted is just the pricing knee (input past 272K bills at
+~2×), not the hard cap. Claude Code otherwise assumes 200K for unknown model
+names, so `claudecodex` sets the real 372K; its autocompact buffer keeps a margin
+below that. Tune with `CLAUDECODEX_CONTEXT`.
 
 ---
 
@@ -142,8 +144,8 @@ ANTHROPIC_BASE_URL=http://localhost:18765
 ANTHROPIC_AUTH_TOKEN=claudecodex-local
 ANTHROPIC_MODEL=gpt-5.6-sol
 ANTHROPIC_SMALL_FAST_MODEL=gpt-5.6-luna
-CLAUDE_CODE_MAX_CONTEXT_TOKENS=272000
-CLAUDE_CODE_AUTO_COMPACT_WINDOW=272000
+CLAUDE_CODE_MAX_CONTEXT_TOKENS=372000
+CLAUDE_CODE_AUTO_COMPACT_WINDOW=372000
 CLAUDE_CODE_DISABLE_AGENT_VIEW=1
 # plus, session-scoped via flags: --model / --effort / --dangerously-skip-permissions
 ```
